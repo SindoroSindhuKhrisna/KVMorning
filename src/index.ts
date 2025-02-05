@@ -10,6 +10,12 @@ interface KVNamespace {
   key: KVKey;
 }
 
+interface contextBody {
+  namespace?: string;
+  key: KVKey;
+  value: any;
+}
+
 // Validate table names to prevent SQL injection
 function isValidTableName(name: string): boolean {
   return /^[a-zA-Z0-9_]+$/.test(name);
@@ -105,9 +111,78 @@ export default class kvMorning {
 const kv = new kvMorning();
 
 const app = new Elysia()
-  .get("/", () => "Hello Elysia")
-  .get("/set", () => kv.set({ namespace: "test", key: "test" }, "test"))
-  .get("/get", () => kv.get({ namespace: "test", key: "test" }))
+  .post("/", async function (ctx) {
+    const body = ctx.body as contextBody
+    const namespace = body?.namespace ?? "default_kv";
+    const key = body?.key;
+    const value = body?.value;
+    if (!key || !value) {
+      return new Response(JSON.stringify({ success: false, error: "Missing key or value" }), { status: 400, headers: { "Content-Type": "application/json" } });
+    }
+    if (namespace) {
+      const result = await kv.set({ namespace, key }, value);
+      if (result) {
+        return new Response(JSON.stringify({ success: true }), { status: 200, headers: { "Content-Type": "application/json" } });
+      } else {
+        return new Response(JSON.stringify({ success: false, error: "Failed to set value" }), { status: 500, headers: { "Content-Type": "application/json" } });
+      }
+    }
+    else {
+      const result = await kv.set(key, value);
+      if (result) {
+        return new Response(JSON.stringify({ success: true }), { status: 200, headers: { "Content-Type": "application/json" } });
+      } else {
+        return new Response(JSON.stringify({ success: false, error: "Failed to set value" }), { status: 500, headers: { "Content-Type": "application/json" } });
+      }
+    }
+  })
+  .get("/", async function (ctx) {
+    const namespace = ctx.query.namespace ?? "default_kv";
+    const key = ctx.query.key;
+    if (!key) {
+      return new Response(JSON.stringify({ success: false, error: "Missing key" }), { status: 400, headers: { "Content-Type": "application/json" } });
+    }
+    if (namespace) {
+      const result = await kv.get({ namespace, key });
+      if (result) {
+        return new Response(JSON.stringify({ success: true, data: result }), { status: 200, headers: { "Content-Type": "application/json" } });
+      } else {
+        return new Response(JSON.stringify({ success: false, error: "Failed to get value" }), { status: 500, headers: { "Content-Type": "application/json" } });
+      }
+    }
+    else {
+      const result = kv.get(key);
+      if (result) {
+        return new Response(JSON.stringify({ success: false, data: result }), { status: 200, headers: { "Content-Type": "application/json" } });
+      } else {
+        return new Response(JSON.stringify({ success: false, error: "Failed to get value" }), { status: 500, headers: { "Content-Type": "application/json" } });
+      }
+    }
+  })
+  .delete("/", async function (ctx) {
+    const body = ctx.body as contextBody
+    const namespace = body.namespace ?? "default_kv";
+    const key = body.key;
+    if (!key) {
+      return new Response(JSON.stringify({ success: false, error: "Missing key" }), { status: 400, headers: { "Content-Type": "application/json" } });
+    }
+    if (namespace) {
+      const result = await kv.del({ namespace, key });
+      if (result) {
+        return new Response(JSON.stringify({ success: true }), { status: 200, headers: { "Content-Type": "application/json" } });
+      } else {
+        return new Response(JSON.stringify({ success: false, error: "Failed to delete value" }), { status: 500, headers: { "Content-Type": "application/json" } });
+      }
+    }
+    else {
+      const result = await kv.del(key);
+      if (result) {
+        return new Response(JSON.stringify({ success: true }), { status: 200, headers: { "Content-Type": "application/json" } });
+      } else {
+        return new Response(JSON.stringify({ success: false, error: "Failed to delete value" }), { status: 500, headers: { "Content-Type": "application/json" } });
+      }
+    }
+  })
   .listen(3000);
 
 console.log(`🦊 Elysia is running at ${app.server?.hostname}:${app.server?.port}`);
